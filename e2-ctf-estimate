@@ -1,0 +1,22 @@
+#!/bin/bash
+
+#SBATCH --partition=cryoem
+#
+#SBATCH --job-name=e2-ctf
+#SBATCH --output=output-%j.txt
+#SBATCH --error=output-%j.txt
+#
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem-per-cpu=16g
+#
+#SBATCH --time=24:00:00
+#
+
+voltage="$1"; shift
+
+. e2-header
+
+e2spt_tomoctf.py --alltiltseries --dfrange=2.0,7.0,0.02 --psrange=10,15,5 --tilesize=256 --voltage=${voltage} --cs=2.7 --nref=15 --stepx=20 --stepy=40 --threads=32
+
+. e2-footer

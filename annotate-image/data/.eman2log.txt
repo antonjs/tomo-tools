@@ -1,0 +1,1 @@
+2021/01/19 16:27:45	2021/01/19 16:28:45	229544/    -2	nucleotide	/opt/EMAN2.31/bin/e2proc2d.py --meanshrink 2 --unstacking /home/acjs/Integration/Tomography/20210112-liposomes/Sample3_5seconds/tiltstack/20200112_tilt_grid4_sample3_001/20200112_tilt_grid4_sample3_001.st sample.png

@@ -1,0 +1,142 @@
+#!/bin/bash
+
+#SBATCH --partition=cryoem
+#
+#SBATCH --job-name=align-tilts
+#SBATCH --output=output-%j.txt
+#SBATCH --error=output-%j.txt
+#
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=8g
+#SBATCH --gpus=1
+#
+#SBATCH --time=24:00:00
+#
+
+set -eo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+}
+
+. e2-header
+
+module load imod
+module load motioncor2
+
+dosefractions=`find ./ -regex ".*/raw/\([0-9]+-[A-Z0-9]+/\)?[dD]ose[fF]ractions?"`
+if [ -z "$dosefractions" ] || [ ! -d $dosefractions/ ]; then
+    echo "Expecting to find a $dosefractions directory"
+    exit 1
+fi
+
+echo "Dosefractions are in $dosefractions"
+
+if [ ! -d align/ ]; then mkdir align; fi
+if [ ! -d tiltstack/ ]; then mkdir tiltstack; fi
+
+if [[ ! -d raw/GainRefs ]]; then
+  echo "Gain reference directory not found"
+  exit 1
+fi
+
+gainreffile="`find raw/GainRefs/ -maxdepth 1 -name '*x1.m1.dm4'`"
+if [ ! -e "$gainreffile" ]; then  
+  echo "Gain reference file $gainreffile not found"
+  exit 1
+fi
+
+if [[ ! -f raw/GainRefs/gainref_bin2.mrc ]]; then
+  dm2mrc "$gainreffile" raw/GainRefs/gainref.mrc
+  newstack -bin 2 raw/GainRefs/gainref.mrc raw/GainRefs/gainref_bin2.mrc
+fi
+
+tilts=`find ./ -regex ".*/raw/\([0-9]+-[A-Z0-9]+/\)?tilts"`
+if [ ! -d $tilts ]; then  
+  echo "Can't find tilt directory: $tilts"
+  exit 1
+fi
+
+pushd align/
+
+for tiltseries in `ls -1 ../$dosefractions/ | sed -r 's/_?[0-9]{5}_[-0-9]+\.[0-9]+\..*//' | sed -r '/^$/d' | uniq`; do
+  echo "Processing $tiltseries"
+
+  if [[ ! "$tiltseries" =~ "_tilt_" && "$1" != "novalidate" ]]; then
+    echo "$tiltseries is not labelled as a tilt--might be a map?"
+    echo "Skipping"
+    continue
+  fi
+
+  mdoc="../$tilts/$tiltseries.mrc.mdoc"
+  if [ ! -f $mdoc ]; then
+    if [[ "$2" != "" ]]; then
+      pixsize="$2"
+      voltage="$3"
+      framedose="$4"
+    else
+      echo "Can't find mdoc $mdoc"
+      exit 1
+    fi
+  else
+    pixsize=`cat $mdoc | grep PixelSpacing | uniq | awk '{ print $3 }'`
+    voltage=`cat $mdoc | grep Voltage | uniq | awk '{ print $3 }'`
+    framedose=`cat $mdoc | grep FrameDosesAndNumber | uniq | awk '{ print $3 }'`
+  fi
+
+  echo "  Pixel size: $pixsize"
+  echo "  Voltage: $voltage kV"
+  echo "  Frame Dose: $framedose e-/A^2/frame"
+
+  output_file="../tiltstack/${tiltseries}.st"
+
+  if [ -d ./$tiltseries ]; then
+    echo "alignment directory exists, skipping"
+    continue
+  fi
+
+  if [ -d "$output_file" ]; then
+    echo "final tiltstack exists, skipping"
+    continue
+  fi
+
+  mkdir $tiltseries
+
+  for tilt in `find ../$dosefractions/ -name ${tiltseries}_*.tif`; do
+    echo "Processing tilt $tilt"
+          MotionCor2  \
+                  -InTiff ${tilt} \
+                  -OutMrc ${tiltseries}/$(basename ${tilt%.tif})_aligned.mrc \
+                  -Gain "../raw/GainRefs/gainref_bin2.mrc" \
+                  -LogFile ${tiltseries}/$(basename ${tilt%.tif}).log \
+                  -FmDose $framedose \
+                  -kV $voltage \
+                  -PixSize $pixsize \
+                  -Patch 5 5 20 \
+                  -Iter 10 \
+                  -Tol 0.5 \
+                  -InFmMotion 1 \
+                  -Gpu 0 \
+                  -GpuMemUsage 0.95
+  done
+
+  pushd ${tiltseries}
+
+  ls -1 ./*_aligned.mrc | awk -F _ '{ print $(NF-1),$(0) }' | sort -g > tilts
+  wc -l ./tilts > tiltfiles
+  cat tilts | awk '{ print $2; print "0" }' >> tiltfiles
+  newstack -fileinlist ./tiltfiles ../$output_file # -mo 1
+  cat ./tilts | awk '{ print $1 }' > ../${output_file%.st}.rawtlt
+
+  popd
+
+  #mc-run ../tiltstack/${tiltseries} ../raw/dosefractions/${tiltseries}*.tif
+done
+
+popd
+
+grep 'Error.*quit' output-$SLURM_JOB_ID.txt && echo "WARNING: Errors in alignment. Alignment may have failed" | notify
+
+. e2-footer

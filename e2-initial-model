@@ -1,0 +1,30 @@
+#!/bin/bash
+
+#SBATCH --partition=cryoem
+#
+#SBATCH --job-name=e2-initial-model
+#SBATCH --output=output-%j.txt
+#SBATCH --error=output-%j.txt
+#
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem-per-cpu=8g
+#
+#SBATCH --time=48:00:00
+#
+
+particles="$1"; shift
+ncls="$1"; shift
+
+. e2-header
+
+if [[ -z "$particles" ]]; then
+  echo "Need to specify particles" | notify
+  exit 1
+fi
+
+echo "Processing particles in ${particles}" | notify
+
+e2spt_sgd_new.py ${particles} --res=50.0 --niter=100 --shrink=2 --parallel=thread:32 --ncls=${ncls:-"1"} # --batch=12 --learnrate=0.2 --sym=c1
+
+. e2-footer

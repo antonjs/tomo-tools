@@ -1,0 +1,40 @@
+#!/bin/bash
+#ls -1 --sort=time ~/.vnc/ | head -n 1 | sed -r 's/.*(:[0-9]+).log/\1/' !/bin/sh
+
+set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+}
+
+
+while true; do
+  job="$(squeue -u acjs | grep e2projec)" || echo "Remote EMAN2 session not running"
+  jobstatus="$(echo $job | awk '{ print $5 }')"
+  nodelist="$(echo $job | awk '{ print $8 }')"
+
+  echo test
+  if [[ -z "$job" ]]; then
+    echo "Starting EMAN2 in VNC"
+    sbatch -x "ampt[000-020],psc[000-009]" e2-projectmanager
+  fi
+
+  echo "Waiting for start: status = $jobstatus, node = $nodelist"
+
+  if [[ "$jobstatus" == "R" ]]; then
+    echo "EMAN running -- connecting to node $nodelist"
+    sleep 2
+    break
+  fi
+
+  sleep 1
+done
+
+host="$(squeue -u acjs | grep e2projec | awk '{print $8}')"
+display="$(ls -1 --sort=time ~/.vnc/ | head -n 1 | sed -r 's/.*:([0-9]+).log/\1/')"
+
+echo "Connecting to $host:$display"
+
+ssh $host -L5910:localhost:590${display}
+

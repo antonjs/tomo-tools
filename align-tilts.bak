@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+}
+
+if [ ! -d raw/dosefractions/ ]; then
+    echo "Expecting to find a dosefractions directory"
+    exit 1
+fi
+
+if [ ! -d align/ ]; then mkdir align; fi
+if [ ! -d tiltstack/ ]; then mkdir tiltstack; fi
+
+gainreffile="raw/GainRefs/K3-18480056 Gain Ref. x1.m1.dm4"
+if [[ ! -d raw/GainRefs || ! -e "$gainreffile" ]]; then
+  echo "Gain reference not found"
+  exit 1
+fi
+
+if [[ ! -f raw/GainRefs/gainref_bin2.mrc ]]; then
+  echo "Processing gainref file"
+  dm2mrc "$gainreffile" raw/GainRefs/gainref.mrc
+  newstack -bin 2 raw/GainRefs/gainref.mrc raw/GainRefs/gainref_bin2.mrc
+fi
+
+pushd align/
+
+for tiltseries in `ls -1 ../raw/dosefractions/ | sed -r 's/_?[0-9]{5}_[-0-9]+\.[0-9]+\..*//' | sed -r '/^$/d' | uniq`; do
+  echo "Processing $tiltseries"
+
+  output_file="../tiltstack/${tiltseries}.st"
+
+  if [ -d ./$tiltseries ]; then
+    echo "alignment directory exists, skipping"
+    continue
+  fi
+
+  if [ -d "$output_file" ]; then
+    echo "final tiltstack exists, skipping"
+    continue
+  fi
+
+  mkdir $tiltseries
+
+  for tilt in `find ../raw/dosefractions/ -name ${tiltseries}*.tif`; do
+          motioncor  \
+                  -InTiff ${tilt} \
+                  -OutMrc ${tiltseries}/$(basename ${tilt%.tif})_aligned.mrc \
+                  -Gain "../raw/GainRefs/gainref_bin2.mrc" \
+                  -LogFile ${tiltseries}/$(basename ${tilt%.tif}).log \
+                  -FmDose 0.19 \
+                  -kV 200 \
+                  -PixSize 1.79 \
+                  -Patch 5 5 \
+                  -Gpu 0 \
+                  -GpuMemUsage 0.95
+  done
+
+  pushd ${tiltseries}
+
+  ls -1 ./*_aligned.mrc | awk -F _ '{ print $(NF-1),$(0) }' | sort -g > tilts
+  wc -l ./tilts > tiltfiles
+  cat tilts | awk '{ print $2; print "0" }' >> tiltfiles
+  newstack -fileinlist ./tiltfiles ../$output_file # -mo 1
+  cat ./tilts | awk '{ print $1 }' > ../${output_file%.mrc}.rawtlt
+
+  popd
+
+  #mc-run ../tiltstack/${tiltseries} ../raw/dosefractions/${tiltseries}*.tif
+done
+
+popd

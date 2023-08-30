@@ -1,0 +1,39 @@
+#!/bin/bash
+
+TOMODIR=~/integration/work
+CLUSTERDIR=acjs@dtn02.slac.stanford.edu:/sdf/group/cryoem/g/CS53/
+INCLUDE_PATTERN="--include-from=-"
+
+push () {
+  pushd $TOMODIR
+  pwd
+
+  find ./ -name '*.edf' | sed -r 's^\.(.*/)[^/]+^\1***^' | rsync -avRd --partial-dir=.rsync_partial --progress --prune-empty-dirs --exclude='.rsync_partial/' --include='*/' ${1} --exclude='*' . $CLUSTERDIR
+
+  popd
+}
+
+pull () {
+  rsync -av --partial-dir=.rsync_partial --progress --exclude='.rsync_partial/' $CLUSTERDIR $TOMODIR/
+}
+
+while getopts "fa" opt; do
+  case $opt in
+    f)
+      INCLUDE_PATTERN="--include=*_full_rec.mrc"
+      ;;
+    a)
+      INCLUDE_PATTERN="--include-from=-"
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+case $1 in
+  push)
+    push "$INCLUDE_PATTERN"
+    ;;
+  pull)
+    pull
+    ;;
+esac

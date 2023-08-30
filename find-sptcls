@@ -1,0 +1,18 @@
+#!/bin/bash
+
+job=$1
+if [[ "$SLURM_JOB_ID" != "" ]]; then
+  job=$SLURM_JOB_ID
+fi
+
+for d in ./sptcls_*; do
+  j="${d}/0_sptcls_params.json"
+  if [[ -f "$j" ]]; then
+    if cat $j | jq '.parallel' | grep $job > /dev/null; then
+      echo $d
+      exit 0
+    fi
+  fi
+done
+
+exit 1

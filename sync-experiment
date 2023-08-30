@@ -1,0 +1,5 @@
+#!/bin/bash
+
+EXP_PATH="dtn02.slac:/sdf/group/cryoem/exp"
+
+rsync -av --partial-dir=.rsync_partial --progress --exclude='.rsync_partial/' -include='/*' --include '*/tiltstack/***' --include '*/tomograms/***' --include '*/raw/maps' --exclude '*' ${EXP_PATH}/${1:0:6}/$1 .

@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+}
+
+OUTPUT_FILE=$1 && shift
+ALIGN_DIR=$(basename ${OUTPUT_FILE%.mrc})
+
+if [ ! -d ./$ALIGN_DIR ]; then
+        mkdir $ALIGN_DIR
+fi
+
+for tilt in ${@}; do
+        motioncor  \
+                -InTiff ${tilt} \
+                -OutMrc $ALIGN_DIR/$(basename ${tilt%.tif})_aligned.mrc \
+                -Gain "../raw/GainRefs/gainref_bin2.mrc" \
+                -LogFile $ALIGN_DIR/$(basename ${tilt%.tif}).log \
+                -FmDose 0.19 \
+                -kV 200 \
+                -PixSize 1.79 \
+                -Patch 5 5 \
+                -Gpu 0 \
+                -GpuMemUsage 0.95
+done
+
+pushd $ALIGN_DIR
+
+ls -1 ./*_aligned.mrc | awk -F _ '{ print $(NF-1),$(0) }' | sort -g > tilts
+wc -l ./tilts > tiltfiles
+cat tilts | awk '{ print $2; print "0" }' >> tiltfiles
+newstack -fileinlist ./tiltfiles ../$OUTPUT_FILE # -mo 1
+cat ./tilts | awk '{ print $1 }' > ../${OUTPUT_FILE%.mrc}.rawtlt
+
+popd

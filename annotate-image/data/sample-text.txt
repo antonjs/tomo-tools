@@ -1,0 +1,7 @@
+
+<b>Scope:</b> TEM3 Talos 					<b>Energy:</b> 200 kV					<b>Exposure:</b> 0.499 s
+<b>Experiment:</b> 202101-CT00 				<b>Mag:</b> 56,000x					<b>Exposure dose:</b> 1.51 e/A^2
+<b>Sample:</b> Sample3_5seconds				<b>Objective:</b> 100					<b>Total Dose:</b> 100 e-/A^2
+<b>Time:</b> 20210112Z180024					<b>GIF:</b> 20 kV					<b>A / pix:</b> 1.79	
+
+<b>Tomo</b>							<b>202112 18:00:24</b>					<b>0 degrees</b>

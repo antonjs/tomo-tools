@@ -1,0 +1,4 @@
+#!/bin/bash
+
+job=`cat $1/0_sptcls_params.json | jq -j '.parallel' | sed -r 's/.*\/([0-9]+)/\1/'`
+less output-${job}.txt

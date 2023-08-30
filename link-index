@@ -1,0 +1,31 @@
+#!/bin/bash
+
+link_media () {
+  cd $1
+
+  for foo in `find ../../work/202* -name $1 -type d`; do 
+    dir=`echo $foo | awk -F / '{print $4}'`; 
+    id=`echo $foo | awk -F / '{print $5}'`; 
+    samp=`basename $(find ../../work/$dir/ -maxdepth 1 -lname "*$id*")`; 
+    
+    echo $dir $id $samp; 
+    
+    mkdir -p $dir; 
+
+    if [[ -e $dir/${samp:=$id} ]]; then 
+      echo "$dir/${samp:=$id} exists, skipping"; 
+      continue; 
+    fi; 
+
+    ln -s ../$foo $dir/${samp:=$id}; 
+  done
+
+  cd ..
+}
+
+pushd ~/integration/index
+
+link_media images
+link_media movies
+
+popd

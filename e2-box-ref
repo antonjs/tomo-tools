@@ -1,0 +1,31 @@
+#!/bin/bash
+
+#SBATCH --partition=cryoem
+#
+#SBATCH --job-name=e2-box-ref
+#SBATCH --output=output-%j.txt
+#SBATCH --error=output-%j.txt
+#
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem-per-cpu=4g
+#
+#SBATCH --time=24:00:00
+#
+
+#ref=$1; shift
+#label=$1; shift
+#vthr=$1; shift
+#tomos=$@; shift
+
+. e2-header
+
+#echo "Boxing references using reference $ref
+#Using tomograms $tomos" | notify
+echo "Boxing references
+$@" | notify
+
+e2spt_tempmatch.py --threads=${SLURM_CPUS_PER_TASK} $@ && notify "Success" || notify "*Failed*"
+#e2spt_tempmatch.py $tomos --reference=$ref --label=$label --nptcl=5000 --dthr=-1.0 --vthr=$vthr --delta=30.0 --sym=c1 --rmgold --boxsz=-1 --threads=128 --rmedge
+
+. e2-footer

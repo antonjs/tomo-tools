@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#SBATCH --partition=cryoem
+#
+#SBATCH --job-name=e2-mpi
+#SBATCH --output=output-%j.txt
+#SBATCH --error=output-%j.txt
+#
+#SBATCH --nodes=2
+#SBATCH --ntasks=4
+#SBATCH --cpus-per-task=1
+#SBATCH --mem-per-cpu=4g
+#
+#SBATCH --time=24:00:00
+#
+
+
+#. ~/opt/eman2-unstable/bin/activate
+#module load openmpi
+#LD_PRELOAD=/sdf/sw/gcc-4.8.5/openmpi-4.0.4/lib/libmpi.so mpirun ~/opt/eman2-unstable/examples/mpi_test.py
+
+. e2-header
+mpirun /sdf/home/a/acjs/opt/eman2/src/examples/mpi_test.py

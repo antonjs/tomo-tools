@@ -1,0 +1,76 @@
+#!/bin/bash
+
+MOVIE_DIR=./movies
+IMAGE_DIR=./images
+
+TMPDIR=/lscratch/$$.tmp
+
+#set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+  rm -rf $TMPDIR
+  echo "cleanup"
+}
+
+mkdir $TMPDIR
+
+mkdir -p $MOVIE_DIR $IMAGE_DIR
+
+echo "Making annotated movie of $1" 
+
+e2proc2d.py --unstacking $1 ${TMPDIR}/`basename ${1%.*}`.png
+
+ftype=$(echo $1 | sed -r 's/.*\/([a-zA-Z0-9]{4})[^\/]+\/[^\/]*/\1/g')
+bname=$(basename $1 | sed -r "s/_tilt_/_$ftype_/")
+mdoc="$(dirname $1)/../mdocs/$(basename ${1%__*}.mrc.mdoc)"
+
+if [[ ! -f "$mdoc" ]]; then
+  echo "No mdoc for this image, will not have annotations"
+  echo "<b>$bname</b>			<b>SLICE</b>" > $TMPDIR/annot.txt
+else
+	scope="$(cat $mdoc | tr -d '\r' | grep -m 1 SerialEM | sed -r 's/.*SerialEM: ([a-zA-Z0-9 ]+\w)\W\W+.*/\1/g')"
+	aqtime="$(cat $mdoc | tr -d '\r' | grep -m 1 SerialEM | sed -r 's/.*\W\W([a-zA-Z0-9-]+)\W+([0-9:]+).*/\1 \2/g')"
+	voltage="$(cat $mdoc | tr -d '\r' | grep -m 1 Voltage | awk '{print $3}')"
+	pixelspacing="$(cat $mdoc | tr -d '\r' | grep -m 1 PixelSpacing | awk '{print $3}')"
+	tiltaxis="$(cat $mdoc | tr -d '\r' | grep -m 1 "Tilt axis angle" | awk '{print $7}')"
+	doserate="$(cat $mdoc | tr -d '\r' | grep -m 1 "DoseRate" | awk '{print $3}')"
+	intensity="$(cat $mdoc | tr -d '\r' | grep -m 1 "Intensity" | awk '{print $3}')"
+	defocus="$(cat $mdoc | tr -d '\r' | grep -m 1 "TargetDefocus" | awk '{print $3}')"
+	exposuretime="$(cat $mdoc | tr -d '\r' |  grep -m 1 "ExposureTime" | awk '{print $3}')"
+	exposure="$(cat $mdoc | tr -d '\r' | grep -m 1 "ExposureDose" | awk '{print $3}')"
+	mag="$(cat $mdoc | tr -d '\r' | grep -m 1 "Magnification" | awk '{print $3}')"
+	gif="$(cat $mdoc | tr -d '\r' | grep -m 1 "FilterSlitAndLoss" | awk '{print $3}')"
+	totaldose=$(cat $mdoc | tr -d '\r' | awk "/DoseRate/ {dr=\$3} /ExposureTime/ { s += dr/($pixelspacing)*2*\$3 } END{print s}")
+	frames=$(cat $mdoc | tr -d '\r' | grep ZValue | awk '{print $3}' | tail -n1 | sed -r 's/[^0-9]*([0-9]*).*/\1/g')
+	exposure=$(bc -l <<< "scale=3; $totaldose / $frames")
+
+	exp="$(pwd | sed -r 's~.*integration/work/~~' | awk -F / '{print $1}')"
+	sample="$(pwd | sed -r 's~.*integration/work/~~' | awk -F / '{print $2}')"
+
+	printf "
+	<b> Scope:</b> %-20s   <b>Voltage:</b> %-3.0d kV                  <b>Exposure:</b> %-.3f
+	<b>   Exp:</b> %-20s   <b>    Mag:</b> %-20s  <b>  Exp Dose:</b> %-.3f e/A<sup>2</sup>
+	<b>Sample:</b> %-20s   <b>Defocus:</b> %-20s  <b>Total Dose:</b> %-.3f e<sup>-</sup>/A<sup>2</sup>
+	<b>  Time:</b> %-20s   <b>    GIF:</b> %-20s  <b>   A / pix:</b> %-15s 
+
+	<b>%-70s</b><b>SLICE</b>" "$scope" "$voltage" "$exposuretime" "$exp" "$mag" "$exposure" "$sample" "$defocus" "$totaldose" "$aqtime" "$gif" "$pixelspacing" "$bname" > $TMPDIR/annot.txt
+fi
+
+cp $TMPDIR/annot.txt $MOVIE_DIR/${bname%.*}-annot.txt
+
+maxframe=`ls -1 $TMPDIR/*.png | sed -r 's/.*-([0-9]+).png/\1/' | sort -nr | head -1`
+for frame in $TMPDIR/*.png; do
+    framenumber=`echo $frame | sed -r 's/.*-([0-9]+).png/\1/'`
+    echo "Frame $framenumber / $maxframe"
+
+    cat $TMPDIR/annot.txt | \
+    sed "s/SLICE/$framenumber \/ $maxframe/g" > $TMPDIR/annot-$framenumber.txt
+
+    convert $frame '(' -size 36x8 xc:black -bordercolor white -border 1x1 ')' -gravity SouthEast -geometry +10+10 -composite $TMPDIR/frame-$framenumber.png
+    convert $TMPDIR/frame-$framenumber.png -gravity South -background black -fill white -font Courier -pointsize 10 pango:@$TMPDIR/annot-$framenumber.txt -append $TMPDIR/frame-$framenumber.png
+done
+
+ffmpeg -r 10 -pattern_type glob -i "${TMPDIR}/frame-*.png" -vcodec libx264 -crf 25 -pix_fmt yuv420p -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" $MOVIE_DIR/${bname%.*}.mp4
+cp ${TMPDIR}/frame-$(( $maxframe / 2 )).png $IMAGE_DIR/${bname%.*}.png

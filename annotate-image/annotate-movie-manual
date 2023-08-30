@@ -1,0 +1,41 @@
+#!/bin/bash
+
+TMPDIR=/tmp/$$.tmp
+
+set -Eeuo pipefail
+trap cleanup SIGINT SIGTERM ERR EXIT
+
+cleanup() {
+  trap - SIGINT SIGTERM ERR EXIT
+  rm -rf $TMPDIR
+}
+
+
+
+mkdir $TMPDIR
+
+e2proc2d.py --unstacking $1 ${TMPDIR}/`basename ${1%.*}`.png
+
+echo "
+<b>Scope:</b> TEM3 Talos                <b>Energy:</b> 200 kV           <b>Exposure:</b> 0.2 s
+<b>Experiment:</b> 20201223-CS53        <b>Mag:</b> 56,000x             <b>Exp Dose:</b> 1.0 e/A<sup>2</sup>
+<b>Sample:</b> Sample3_5seconds         <b>Objective:</b> 100           <b>Total Dose:</b> 124 e<sup>-</sup>/A<sup>2</sup>
+<b>Time:</b> 20201224Z211900            <b>GIF:</b> none                <b>A / pix:</b> 1.74
+
+<b>Tomo</b>                                                       <b>SLICE</b>" > $TMPDIR/annot.txt
+vim $TMPDIR/annot.txt
+cp $TMPDIR/annot.txt ${1%.*}-annot.txt
+
+maxframe=`ls -1 $TMPDIR/*.png | sed -r 's/.*-([0-9]+).png/\1/' | sort -nr | head -1`
+for frame in $TMPDIR/*.png; do
+    framenumber=`echo $frame | sed -r 's/.*-([0-9]+).png/\1/'`
+    echo "Frame $framenumber / $maxframe"
+
+    cat $TMPDIR/annot.txt | \
+    sed "s/SLICE/$framenumber \/ $maxframe/g" > $TMPDIR/annot-$framenumber.txt
+
+    convert $frame '(' -size 36x8 xc:black -bordercolor white -border 1x1 ')' -gravity SouthEast -geometry +10+10 -composite $TMPDIR/frame-$framenumber.png
+    convert $TMPDIR/frame-$framenumber.png -gravity South -background black -fill white -font Courier -pointsize 10 pango:@$TMPDIR/annot-$framenumber.txt -append $TMPDIR/frame-$framenumber.png
+done
+
+ffmpeg -r 10 -pattern_type glob -i "${TMPDIR}/frame-*.png" -vcodec libx264 -crf 25 -pix_fmt yuv420p -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ${1%.*}.mp4

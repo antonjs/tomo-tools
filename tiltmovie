@@ -1,0 +1,11 @@
+#!/bin/bash
+
+TMPDIR=/tmp/$$.tmp
+
+mkdir $TMPDIR
+
+e2proc2d.py --meanshrink 2 --unstacking $1 ${TMPDIR}/${1%.*}.png
+
+ffmpeg -r 10 -i ${TMPDIR}/${1%.*}-%02d.png -vcodec libx264 -crf 25 -pix_fmt yuv420p ${1%.*}.mp4
+
+rm -rf TMPDIR
